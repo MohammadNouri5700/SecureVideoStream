@@ -1,0 +1,6 @@
+@VideoEncryptionAPI_HostAddress = http://localhost:5022
+
+GET {{VideoEncryptionAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

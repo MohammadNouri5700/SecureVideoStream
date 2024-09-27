@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "cwUBoUHkKHZe0YWnJnVqDecPz5O+ztsZD8T/XS5r9l8=",
+  "Source": "VideoEncryptionAPI",
+  "BasePath": "_content/VideoEncryptionAPI",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}
