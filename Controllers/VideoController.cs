@@ -13,9 +13,10 @@ public class VideoController : ControllerBase
 {
     private const int BufferSize = 64 * 1024; // 64 KB
 
-    private static readonly byte[] AesKey = Encoding.UTF8.GetBytes("0123456789ABCDEF0123456789ABCDEF"); // 256-bit key
-    private static readonly byte[] AesIV = Encoding.UTF8.GetBytes("0123456789ABCDEF"); // 128-bit IV
     private static readonly string EncryptedVideoPath = Path.Combine(Directory.GetCurrentDirectory(), "sampleV.mp4");
+
+
+    private static readonly RSA rsa = RSA.Create();
 
     // Endpoint for uploading and encrypting the video
     [HttpPost("upload")]
@@ -26,11 +27,28 @@ public class VideoController : ControllerBase
 
         try
         {
-            using (var memoryStream = new MemoryStream())
+            // Generate AES key
+            using (var aes = Aes.Create())
             {
-                await file.CopyToAsync(memoryStream);
-                byte[] videoData = memoryStream.ToArray();
-                byte[] encryptedData = EncryptData(videoData);
+                aes.GenerateKey();
+                aes.GenerateIV();
+
+                // Encrypt the video data
+                byte[] encryptedData = await EncryptVideo(file, aes.Key, aes.IV);
+
+                // Encrypt the AES key with RSA
+                byte[] encryptedAesKey = rsa.Encrypt(aes.Key, RSAEncryptionPadding.OaepSHA256);
+
+                // Save encrypted AES key and IV to a secure location (e.g., database)
+                // Here we will just save it to a file for demonstration
+                string aesKeyPath = Path.Combine(Directory.GetCurrentDirectory(), "aesKey.bin");
+                await System.IO.File.WriteAllBytesAsync(aesKeyPath, encryptedAesKey);
+
+                // Save the IV for later use
+                string aesIvPath = Path.Combine(Directory.GetCurrentDirectory(), "aesIv.bin");
+                await System.IO.File.WriteAllBytesAsync(aesIvPath, aes.IV);
+
+                // Save the encrypted video
                 await System.IO.File.WriteAllBytesAsync(EncryptedVideoPath, encryptedData);
             }
 
@@ -41,6 +59,24 @@ public class VideoController : ControllerBase
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
+
+    private async Task<byte[]> EncryptVideo(IFormFile file, byte[] aesKey, byte[] aesIV)
+    {
+        using (var memoryStream = new MemoryStream())
+        using (var aes = Aes.Create())
+        {
+            aes.Key = aesKey;
+            aes.IV = aesIV;
+
+            using (var cryptoStream = new CryptoStream(memoryStream, aes.CreateEncryptor(), CryptoStreamMode.Write))
+            {
+                await file.CopyToAsync(cryptoStream);
+            }
+
+            return memoryStream.ToArray();
+        }
+    }
+
     // Endpoint for downloading
     [HttpGet("download")]
     public async Task<IActionResult> DownloadVideo()
@@ -59,23 +95,32 @@ public class VideoController : ControllerBase
         }
     }
 
+
+
     [HttpGet("decrypt-and-save")]
-    public IActionResult DecryptAndSaveVideo()
+    public async Task<IActionResult> DecryptAndSaveVideo()
     {
         if (!System.IO.File.Exists(EncryptedVideoPath))
             return NotFound("Encrypted video not found.");
 
         try
         {
-            // Read encrypted video data from file
-            byte[] encryptedVideoData = System.IO.File.ReadAllBytes(EncryptedVideoPath);
+            // Read encrypted AES key
+            byte[] encryptedAesKey = await System.IO.File.ReadAllBytesAsync(Path.Combine(Directory.GetCurrentDirectory(), "aesKey.bin"));
+
+            // Decrypt AES key using RSA
+            byte[] aesKey = rsa.Decrypt(encryptedAesKey, RSAEncryptionPadding.OaepSHA256);
+
+            // Read IV
+            byte[] aesIV = await System.IO.File.ReadAllBytesAsync(Path.Combine(Directory.GetCurrentDirectory(), "aesIv.bin"));
 
             // Decrypt the video data
-            byte[] decryptedVideoData = DecryptData(encryptedVideoData);
+            byte[] encryptedVideoData = await System.IO.File.ReadAllBytesAsync(EncryptedVideoPath);
+            byte[] decryptedVideoData = DecryptVideo(encryptedVideoData, aesKey, aesIV);
 
             // Save decrypted video to a new file
             var decryptedVideoPath = Path.Combine(Directory.GetCurrentDirectory(), "decryptedVideo.mp4");
-            System.IO.File.WriteAllBytes(decryptedVideoPath, decryptedVideoData);
+            await System.IO.File.WriteAllBytesAsync(decryptedVideoPath, decryptedVideoData);
 
             return Ok($"Video decrypted and saved successfully at: {decryptedVideoPath}");
         }
@@ -84,7 +129,39 @@ public class VideoController : ControllerBase
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
+
     // Endpoint to stream encrypted video chunks to the client
+    // Method to encrypt the AES key using RSA
+    private byte[] EncryptAesKeyWithRsa(byte[] aesKey)
+    {
+        using var rsa = RSA.Create();
+        // Load your RSA public key here (assuming you have a method to load it)
+        // rsa.ImportRSAPublicKey(yourPublicKeyBytes, out _);
+
+        return rsa.Encrypt(aesKey, RSAEncryptionPadding.OaepSHA256);
+    }
+    
+    private byte[] DecryptAesKeyWithRsa(byte[] rsaEncryptedKey)
+    {
+        string privateKeyFilePath = Path.Combine(Directory.GetCurrentDirectory(), "privateKey.xml");
+        using var rsa = RSA.Create();
+
+        if (!File.Exists(privateKeyFilePath))
+        {
+            using (var rsaNew = new RSACryptoServiceProvider(2048))
+            {
+                string privateKeyXml = rsaNew.ToXmlString(true);
+                File.WriteAllText(privateKeyFilePath, privateKeyXml);
+            }
+        }
+
+        string privateKeyXmlFromFile = File.ReadAllText(privateKeyFilePath);
+        rsa.FromXmlString(privateKeyXmlFromFile);
+
+        byte[] aesKey = rsa.Decrypt(rsaEncryptedKey, RSAEncryptionPadding.OaepSHA256);
+        return aesKey;
+    }
+
 
 
     [HttpGet("stream-encrypted-video-performance")]
@@ -95,18 +172,25 @@ public class VideoController : ControllerBase
 
         try
         {
-            using (var fileStream = new FileStream(EncryptedVideoPath, FileMode.Open, FileAccess.Read))
-            using (var aesAlg = Aes.Create())
-            {
-                aesAlg.Key = AesKey;
-                aesAlg.IV = AesIV;
+            // 1. Generate AES key and IV
+            using var aes = Aes.Create();
+            aes.GenerateKey();
+            aes.GenerateIV();
 
-                using (var encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV))
-                using (var cryptoStream = new CryptoStream(Response.Body, encryptor, CryptoStreamMode.Write))
-                {
-                    Response.ContentType = "application/octet-stream";
-                    await fileStream.CopyToAsync(cryptoStream);
-                }
+            // 2. Encrypt AES key with RSA (assuming RSA is already generated and stored)
+            byte[] rsaEncryptedKey = EncryptAesKeyWithRsa(aes.Key);
+
+            // 3. Stream the RSA encrypted AES key to the client (for example purposes)
+            Response.ContentType = "application/octet-stream";
+            await Response.Body.WriteAsync(rsaEncryptedKey, 0, rsaEncryptedKey.Length);
+            await Response.Body.WriteAsync(new byte[] { 0 }, 0, 1); // Separator
+
+            // 4. Stream the encrypted video
+            using (var fileStream = new FileStream(EncryptedVideoPath, FileMode.Open, FileAccess.Read))
+            using (var encryptor = aes.CreateEncryptor(aes.Key, aes.IV))
+            using (var cryptoStream = new CryptoStream(Response.Body, encryptor, CryptoStreamMode.Write))
+            {
+                await fileStream.CopyToAsync(cryptoStream);
             }
 
             return new EmptyResult();
@@ -125,41 +209,35 @@ public class VideoController : ControllerBase
 
         try
         {
-            const int bufferSize = 64 * 1024; // 64 KB buffer size
-            byte[] buffer = new byte[bufferSize];
+            // 1. Generate AES key and IV
+            using var aes = Aes.Create();
+            aes.GenerateKey();
+            aes.GenerateIV();
 
-            // Open the video file for reading
+            // 2. Encrypt AES key with RSA
+            byte[] rsaEncryptedKey = EncryptAesKeyWithRsa(aes.Key);
+
+            // 3. Stream the RSA encrypted AES key to the client
+            Response.ContentType = "application/octet-stream";
+            await Response.Body.WriteAsync(rsaEncryptedKey, 0, rsaEncryptedKey.Length);
+            await Response.Body.WriteAsync(new byte[] { 0 }, 0, 1); // Separator
+
+            // 4. Stream the encrypted video
             using (var fileStream = new FileStream(EncryptedVideoPath, FileMode.Open, FileAccess.Read))
+            using (var encryptor = aes.CreateEncryptor(aes.Key, aes.IV))
+            using (var cryptoStream = new CryptoStream(Response.Body, encryptor, CryptoStreamMode.Write))
             {
-                using (var aesAlg = Aes.Create())
-                {
-                    aesAlg.Key = AesKey;
-                    aesAlg.IV = AesIV;
-
-                    using (var encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV))
-                    {
-                        using (var cryptoStream = new CryptoStream(Response.Body, encryptor, CryptoStreamMode.Write))
-                        {
-                            Response.ContentType = "application/octet-stream"; // Content type for encrypted data
-                            int bytesRead;
-                            while ((bytesRead = await fileStream.ReadAsync(buffer, 0, bufferSize)) > 0)
-                            {
-                                // Write encrypted data to the client
-                                await cryptoStream.WriteAsync(buffer, 0, bytesRead);
-                                await cryptoStream.FlushAsync(); // Ensure the chunk is sent immediately
-                            }
-                        }
-                    }
-                }
+                await fileStream.CopyToAsync(cryptoStream);
             }
 
-            return new EmptyResult(); // End the response
+            return new EmptyResult();
         }
         catch (Exception ex)
         {
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
+
 
 
     [HttpGet("stream-decrypted-video-seek")]
@@ -171,63 +249,32 @@ public class VideoController : ControllerBase
         try
         {
             byte[] encryptedVideoData = System.IO.File.ReadAllBytes(EncryptedVideoPath);
-            byte[] decryptedVideoData = DecryptData(encryptedVideoData);
-            long videoLength = decryptedVideoData.Length; // Get the length of decrypted video
-            Console.WriteLine($"Decrypted video length: {videoLength}"); // Log length
 
-            var rangeHeader = Request.Headers["Range"].ToString();
-            long start = 0, end = 0;
+            // Decrypt the AES key from RSA
+            byte[] aesKey = DecryptAesKeyWithRsa(); // Implement this method to decrypt the key
 
-            // Check if Range header is provided
-            if (string.IsNullOrEmpty(rangeHeader))
+            using var aes = Aes.Create();
+            aes.Key = aesKey;
+            aes.IV = /* Set your IV here, it should be sent along with the encrypted key */;
+
+            // Decrypt the video data
+            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+            using var decryptedStream = new MemoryStream();
+
+            using (var cryptoStream = new CryptoStream(decryptedStream, decryptor, CryptoStreamMode.Write))
             {
-                return File(decryptedVideoData, "video/mp4"); // Return full video if no range
+                await cryptoStream.WriteAsync(encryptedVideoData, 0, encryptedVideoData.Length);
             }
 
-            // Parse the range
-            var range = rangeHeader.Replace("bytes=", "").Split('-');
-            if (long.TryParse(range[0], out start))
-            {
-                end = range.Length > 1 && long.TryParse(range[1], out long parsedEnd) ? parsedEnd : videoLength - 1;
-            }
-            else
-            {
-                return StatusCode(StatusCodes.Status416RangeNotSatisfiable);
-            }
-
-            // Log parsed range
-            Console.WriteLine($"Range start: {start}, end: {end}, videoLength: {videoLength}");
-
-            // Validate the range
-            if (start < 0 || end < 0 || start >= videoLength || end >= videoLength || start > end)
-            {
-                return StatusCode(StatusCodes.Status416RangeNotSatisfiable);
-            }
-
-            long length = end - start + 1; // Calculate length of requested range
-            Response.StatusCode = StatusCodes.Status206PartialContent; // Set status code to 206
-            Response.ContentType = "video/mp4"; // Set content type to video/mp4
-            Response.Headers.Add("Content-Range", $"bytes {start}-{end}/{videoLength}"); // Add content range header
-            Response.Headers.Add("Accept-Ranges", "bytes"); // Indicate server accepts range requests
-            Response.ContentLength = length; // Set content length to requested range length
-
-            // Prepare to stream the requested range
-            byte[] videoChunk = new byte[length]; // Create byte array for video chunk
-            Array.Copy(decryptedVideoData, start, videoChunk, 0, length); // Copy requested range into video chunk
-
-            using (var stream = new MemoryStream(videoChunk))
-            {
-                await stream.CopyToAsync(Response.Body); // Stream the video chunk to the response body
-            }
-
-            return new EmptyResult(); // End the response
+            // Streaming the decrypted video
+            decryptedStream.Position = 0; // Reset position
+            return File(decryptedStream.ToArray(), "video/mp4");
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Internal server error: {ex.Message}"); // Return 500 error in case of exception
+            return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
-
 
 
     [HttpGet("stream-decrypted-video-not-seek")]
@@ -238,32 +285,28 @@ public class VideoController : ControllerBase
 
         try
         {
-            // Set the response content type to video format (e.g., video/mp4)
-            Response.ContentType = "video/mp4";
-
-            // Read encrypted video data from file
             byte[] encryptedVideoData = System.IO.File.ReadAllBytes(EncryptedVideoPath);
 
+            // Decrypt the AES key from RSA
+            byte[] aesKey = DecryptAesKeyWithRsa(); // Implement this method to decrypt the key
+
+            using var aes = Aes.Create();
+            aes.Key = aesKey;
+            aes.IV = /* Set your IV here, it should be sent along with the encrypted key */;
+
             // Decrypt the video data
-            byte[] decryptedVideoData = DecryptData(encryptedVideoData);
+            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+            using var decryptedStream = new MemoryStream();
 
-            // Define chunk size for streaming
-            const int chunkSize = 1 * 1024 * 1024; // 1 MB
-
-
-            // Start streaming the decrypted video in chunks
-            using (var memoryStream = new MemoryStream(decryptedVideoData))
+            using (var cryptoStream = new CryptoStream(decryptedStream, decryptor, CryptoStreamMode.Write))
             {
-                byte[] buffer = new byte[chunkSize];
-                int bytesRead;
-                while ((bytesRead = await memoryStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                {
-                    await Response.Body.WriteAsync(buffer, 0, bytesRead);
-                    await Response.Body.FlushAsync(); // Ensure the chunk is sent immediately
-                }
+                await cryptoStream.WriteAsync(encryptedVideoData, 0, encryptedVideoData.Length);
             }
 
-            return new EmptyResult(); // End the response
+            // Stream the decrypted video directly
+            decryptedStream.Position = 0; // Reset position
+            Response.ContentType = "video/mp4";
+            return File(decryptedStream.ToArray(), "video/mp4");
         }
         catch (Exception ex)
         {
@@ -271,69 +314,58 @@ public class VideoController : ControllerBase
         }
     }
 
-    private byte[] DecryptData(byte[] encryptedData)
-    {
-        using (Aes aesAlg = Aes.Create())
-        {
-            aesAlg.Key = AesKey;
-            aesAlg.IV = AesIV;
 
-            using (var decryptor = aesAlg.CreateDecryptor(aesAlg.Key, aesAlg.IV))
-            {
-                using (var msDecrypt = new MemoryStream(encryptedData))
-                {
-                    using (var csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
-                    {
-                        using (var msPlain = new MemoryStream())
-                        {
-                            csDecrypt.CopyTo(msPlain);
-                            return msPlain.ToArray();
-                        }
-                    }
-                }
-            }
+
+    [HttpGet("decrypt-and-saveede")]
+    public async Task<IActionResult> DecryptAndSaveVideodd()
+    {
+        if (!System.IO.File.Exists(EncryptedVideoPath))
+            return NotFound("Encrypted video not found.");
+
+        try
+        {
+            // Read encrypted AES key
+            byte[] encryptedAesKey = await System.IO.File.ReadAllBytesAsync(Path.Combine(Directory.GetCurrentDirectory(), "aesKey.bin"));
+
+            // Decrypt AES key using RSA
+            byte[] aesKey = rsa.Decrypt(encryptedAesKey, RSAEncryptionPadding.OaepSHA256);
+
+            // Read IV
+            byte[] aesIV = await System.IO.File.ReadAllBytesAsync(Path.Combine(Directory.GetCurrentDirectory(), "aesIv.bin"));
+
+            // Decrypt the video data
+            byte[] encryptedVideoData = await System.IO.File.ReadAllBytesAsync(EncryptedVideoPath);
+            byte[] decryptedVideoData = DecryptVideo(encryptedVideoData, aesKey, aesIV);
+
+            // Save decrypted video to a new file
+            var decryptedVideoPath = Path.Combine(Directory.GetCurrentDirectory(), "decryptedVideo.mp4");
+            await System.IO.File.WriteAllBytesAsync(decryptedVideoPath, decryptedVideoData);
+
+            return Ok($"Video decrypted and saved successfully at: {decryptedVideoPath}");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
-    private byte[] EncryptData(byte[] data, int length)
-    {
-        using (Aes aesAlg = Aes.Create())
-        {
-            aesAlg.Key = AesKey;
-            aesAlg.IV = AesIV;
 
-            using (var encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV))
+    private byte[] DecryptVideo(byte[] encryptedData, byte[] aesKey, byte[] aesIV)
+    {
+        using (var memoryStream = new MemoryStream())
+        using (var aes = Aes.Create())
+        {
+            aes.Key = aesKey;
+            aes.IV = aesIV;
+
+            using (var cryptoStream = new CryptoStream(memoryStream, aes.CreateDecryptor(), CryptoStreamMode.Write))
             {
-                using (var msEncrypt = new MemoryStream())
-                {
-                    using (var csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
-                    {
-                        csEncrypt.Write(data, 0, length);
-                        csEncrypt.FlushFinalBlock();
-                    }
-                    return msEncrypt.ToArray();
-                }
+                cryptoStream.Write(encryptedData, 0, encryptedData.Length);
+                cryptoStream.FlushFinalBlock();
             }
+
+            return memoryStream.ToArray();
         }
     }
-    private byte[] EncryptData(byte[] data)
-    {
-        using (Aes aesAlg = Aes.Create())
-        {
-            aesAlg.Key = AesKey;
-            aesAlg.IV = AesIV;
 
-            using (var encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV))
-            {
-                using (var msEncrypt = new MemoryStream())
-                {
-                    using (var csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
-                    {
-                        csEncrypt.Write(data, 0, data.Length);
-                        csEncrypt.FlushFinalBlock();
-                    }
-                    return msEncrypt.ToArray();
-                }
-            }
-        }
-    }
+
 }

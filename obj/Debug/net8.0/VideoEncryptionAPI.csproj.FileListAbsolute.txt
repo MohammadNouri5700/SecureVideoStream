@@ -5,8 +5,12 @@
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/VideoEncryptionAPI.runtimeconfig.json
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/VideoEncryptionAPI.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/VideoEncryptionAPI.pdb
+/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.AspNetCore.JsonPatch.dll
+/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.AspNetCore.Mvc.NewtonsoftJson.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.AspNetCore.OpenApi.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.OpenApi.dll
+/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Newtonsoft.Json.dll
+/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Newtonsoft.Json.Bson.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Swashbuckle.AspNetCore.Swagger.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Swashbuckle.AspNetCore.SwaggerGen.dll
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Swashbuckle.AspNetCore.SwaggerUI.dll
@@ -17,6 +21,7 @@
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.csproj.CoreCompileInputs.cache
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.MvcApplicationPartsAssemblyInfo.cs
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.MvcApplicationPartsAssemblyInfo.cache
+/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.sourcelink.json
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/staticwebassets.build.json
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/staticwebassets.development.json
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/staticwebassets/msbuild.VideoEncryptionAPI.Microsoft.AspNetCore.StaticWebAssets.props
@@ -31,7 +36,3 @@
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.pdb
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/VideoEncryptionAPI.genruntimeconfig.cache
 /home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/obj/Debug/net8.0/ref/VideoEncryptionAPI.dll
-/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.AspNetCore.JsonPatch.dll
-/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Microsoft.AspNetCore.Mvc.NewtonsoftJson.dll
-/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Newtonsoft.Json.dll
-/home/leo/Documents/A_Company/Projects/AI/web/VideoEncryptionAPI/bin/Debug/net8.0/Newtonsoft.Json.Bson.dll
