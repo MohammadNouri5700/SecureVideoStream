@@ -16,7 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Videos\asli\" />
+    <Folder Include="Controllers\output\" />
+    <Folder Include="Videos\" />
   </ItemGroup>
 
 </Project>
