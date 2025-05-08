@@ -7,13 +7,21 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 100 * 1024 * 1024; // Set to 100 MB
+     options.ListenAnyIP(50051);
+     options.Limits.MaxRequestBodySize = 900 * 1024 * 1024;
 });
 
 
 var app = builder.Build();
 
-
+app.UseStaticFiles(new StaticFileOptions
+{
+    ServeUnknownFileTypes = true,
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.Append("Accept-Ranges", "bytes");
+    }
+});
 
 
 // Configure the HTTP request pipeline.
